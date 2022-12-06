@@ -1,0 +1,5 @@
+*.log
+*.names
+*.tunnels
+*.orig
+*.patch

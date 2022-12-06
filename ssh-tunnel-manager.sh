@@ -150,10 +150,11 @@ while [ $# -gt 0 ]; do
 
 		# undefined parameter        
 		*)
-			echo "ERROR: Unknown option '$1'"
-			HELP=1
-			shift
-			break
+            COMMAND='restart'
+			if [[ $# -gt 0 ]]; then
+				COMMAND_INDEX_NAME=$1
+				shift
+			fi
 			;;
 	esac
 done
@@ -301,35 +302,43 @@ case $COMMAND in
 			IDX_END=${#TUNNELS[@]}
 		fi
 
+		pslist=`ps aux`
 		for (( idx=$IDX_START; idx<$IDX_END; idx++ ));
 		do
+			tried_stop=1
 			# notify "manage" script of terminate request. This avoids the restart of the tunnel
-			RESULT_PID=`ps aux | grep -v grep | grep "$0 --config $CONFIG_FILE manage $idx\$" | awk '{print $2}' | tr '\n' ' '`
-			[ "$DBG" -gt "0" ] && echotime "STOP - *** DBG-CMD: ps aux | grep -v grep | grep \"$0 --config $CONFIG_FILE manage $idx\\\$\" | awk '{print \$2}'"
+			RESULT_PID=`echo "${pslist}" | grep -v grep | grep "$0 --config $CONFIG_FILE manage $idx\$" | awk '{print $2}' | tr '\n' ' '`
+			[ "$DBG" -gt "0" ] && echotime "STOP - *** DBG-CMD: ps aux | grep -v grep | grep \"$0 --config $CONFIG_FILE manage $idx\$\" | awk '{print \$2}'"
 			for PID in $RESULT_PID; do
 				kill $PID &>/dev/null
+				tried_stop=0
 			done
 			echotime "STOP - Stop sent manager of tunnel '${TUNNEL_NAMES[$idx]}' (ID $idx) ... PID: $RESULT_PID"
 
 			# Terminate the ssh tunnel processes.
-			RESULT_PID=`ps aux | grep -v grep | grep "ssh -N ${TUNNELS[$idx]}" | awk '{print $2}' | tr '\n' ' '`
+			RESULT_PID=`echo "${pslist}" | grep -v grep | grep "ssh -N ${TUNNELS[$idx]}" | awk '{print $2}' | tr '\n' ' '`
 			[ "$DBG" -gt "0" ] && echotime "STOP - *** DBG-CMD: ps aux | grep -v grep | grep \"ssh -N ${TUNNELS[$idx]}\" | awk '{print \$2}'"
 			for PID in $RESULT_PID; do
 				kill $PID &>/dev/null
+				tried_stop=0
 			done
 
 			echotime "STOP - Stopped tunnel '${TUNNEL_NAMES[$idx]}' (ID $idx) ... PID: $RESULT_PID"
 			
-			# check if the tunnels really down
-			sleep "0.3"
-			TUNNELS_COUNT=0
-			TMANAGER_COUNT=0
-			TUNNELS_COUNT=`ps aux | grep -v grep | grep "ssh -N ${TUNNELS[$idx]}" | awk '{print $2}' | wc -l`
-			TMANAGER_COUNT=`ps aux | grep -v grep | grep "$0 --config $CONFIG_FILE manage $idx\$" | awk '{print $2}' | wc -l`
-			if [[ "$TUNNELS_COUNT" -lt "1" ]] && [[ "$TUNNELS_COUNT" -lt "1" ]]; then
-				echo "Stopping tunnel '${TUNNEL_NAMES[$idx]}' ... Done"
+			if [ "$tried_stop" = "0" ]; then
+				# check if the tunnels really down
+				sleep "0.3"
+				TUNNELS_COUNT=0
+				TMANAGER_COUNT=0
+				TUNNELS_COUNT=`ps aux | grep -v grep | grep "ssh -N ${TUNNELS[$idx]}" | awk '{print $2}' | wc -l`
+				TMANAGER_COUNT=`ps aux | grep -v grep | grep "$0 --config $CONFIG_FILE manage $idx\$" | awk '{print $2}' | wc -l`
+				if [[ "$TUNNELS_COUNT" -lt "1" ]] && [[ "$TMANAGER_COUNT" -lt "1" ]]; then
+					echo "Stopping tunnel '${TUNNEL_NAMES[$idx]}' ... Done"
+				else
+					echo "Stopping tunnel '${TUNNEL_NAMES[$idx]}' ... Failed"
+				fi
 			else
-				echo "Stopping tunnel '${TUNNEL_NAMES[$idx]}' ... Failed"
+				echo "Stopping tunnel '${TUNNEL_NAMES[$idx]}' ... Not running"
 			fi
 		done
 		echotime "COMM - Execute STOP procedure ... Done"
@@ -354,11 +363,12 @@ case $COMMAND in
 		fi
 
 		EXIT_CODE=0
+		pslist=`ps aux`
 		for (( idx=$IDX_START; idx<$IDX_END; idx++ ));
 		do
 			# get the list of processs
 			RESULT=0
-			RESULT=`ps aux | grep -v grep | grep "ssh -N ${TUNNELS[$idx]}" | wc -l`
+			RESULT=`echo "${pslist}" | grep -v grep | grep "ssh -N ${TUNNELS[$idx]}" | wc -l | tr -d ' '`
 			# show the result
 			if [[ "$RESULT" -gt "0" ]]; then
 				echotime "STATUS - Status of Tunnel '${TUNNEL_NAMES[$idx]}' (ID $idx) is ... running"
@@ -410,7 +420,7 @@ case $COMMAND in
 				$0 --config $CONFIG_FILE manage $idx &
 				sleep "0.2"
 				RESULT_PID=`ps aux | grep -v grep | grep "$0 --config $CONFIG_FILE manage $idx\$" | awk '{print $2}' | tr '\n' ' '`
-				[ "$DBG" -gt "0" ] && echotime "START - *** DBG-CMD: ps aux | grep -v grep | grep \"$0 --config $CONFIG_FILE manage $idx\\\$\" | awk '{print \$2}'"
+				[ "$DBG" -gt "0" ] && echotime "START - *** DBG-CMD: ps aux | grep -v grep | grep \"$0 --config $CONFIG_FILE manage $idx\$\" | awk '{print \$2}'"
 				echotime "START - Starting tunnel '${TUNNEL_NAMES[$idx]}' (ID $idx) ... PID: $RESULT_PID"
 				echo "Starting tunnel '${TUNNEL_NAMES[$idx]}' ... Done"
 			fi
